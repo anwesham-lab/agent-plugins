@@ -121,17 +121,52 @@ All workflows are in [`.github/workflows/`](../.github/workflows/):
 | `dependency-review.yml`  | PR                         | Dependency vulnerability review                                   |
 | `scorecard-analysis.yml` | Push to main, schedule     | OpenSSF Scorecard                                                 |
 | `stale.yml`              | Daily cron                 | Stale PR/issue management                                         |
+| `publish.yml`            | Release published, manual  | Publish changed plugins to npm and upload release assets          |
 
 ## Release Process
 
-Releases follow [semantic versioning](https://semver.org/). Version numbers are tracked in plugin manifests (`plugin.json`).
+Releases follow [semantic versioning](https://semver.org/). The [`publish.yml`](../.github/workflows/publish.yml) workflow automatically publishes changed plugins to npm using Trusted Publishing (OIDC) when a GitHub release is published.
 
-When preparing a release:
+### Version bumping
+
+Two files must be updated in the same PR whenever a plugin version changes:
+
+1. **`plugins/<name>/.claude-plugin/plugin.json`** — the plugin's `version` field (source of truth for npm)
+2. **`.claude-plugin/marketplace.json`** — the matching `plugins[].version` entry
+
+These must stay in sync. The `lint:cross-refs` task validates name consistency; version consistency is currently a manual check during PR review (see [Review Criteria](#review-criteria) item 5).
+
+### Publishing a release
 
 1. Ensure all CI checks pass on `main`
-2. Verify plugin manifest versions are updated
+2. Verify versions are bumped in both `plugin.json` and `marketplace.json`
 3. Run a full build locally: `mise run build`
-4. Tag the release following the versioning convention
+4. [Draft a GitHub release](https://github.com/awslabs/agent-plugins/releases/new) — the `publish.yml` workflow triggers on publish
+5. A team member **other than the release author** approves the `publish` environment deployment review
+6. The workflow detects which plugins changed since the previous release, publishes each to npm as `@agent-plugins-for-aws/<name>`, and uploads the `.tgz` to the release
+
+### Re-publishing a single plugin
+
+Use **Actions > Publish > Run workflow** with the `plugin` input (e.g., `deploy-on-aws`). The workflow skips any version already on the npm registry (idempotent).
+
+### First-time setup for a new plugin
+
+Before the first publish, the package name must be reserved on npm and Trusted Publishing configured:
+
+```bash
+mise run npm:init-publish <plugin-name>
+```
+
+Then configure Trusted Publishing on [npmjs.com](https://www.npmjs.com) (repository: `awslabs/agent-plugins`, workflow: `publish.yml`, environment: `publish`). See `tools/npm-init-publish.sh` for details.
+
+### Repository environment setup
+
+The publish workflow requires an `publish` GitHub environment with deployment protection rules. An admin must create this once under **Settings > Environments**:
+
+1. Create an environment named `publish`
+2. Enable **Required reviewers** and add the `@awslabs/agent-plugins-admins` team
+3. Check **Prevent self-review** — the approver cannot be the person who triggered the workflow
+4. Optionally restrict **Deployment branches** to `main` only
 
 ## Security
 

@@ -1,0 +1,347 @@
+name: Publish
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: >
+          Plugin name to publish (e.g. "deploy-on-aws").
+          Leave empty to auto-detect all changed plugins.
+        required: false
+        type: string
+permissions:
+  actions: none
+  attestations: none
+  checks: none
+  contents: none
+  deployments: none
+  discussions: none
+  id-token: none
+  issues: none
+  models: none
+  packages: none
+  pages: none
+  pull-requests: none
+  repository-projects: none
+  security-events: none
+  statuses: none
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 1: Detect which plugins changed since the previous release
+  # ──────────────────────────────────────────────────────────────────────────
+  detect-changes:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      has_plugins: ${{ steps.matrix.outputs.has_plugins }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0 # full history for diff
+          fetch-tags: true
+
+      - name: Build plugin matrix
+        id: matrix
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_PLUGIN: ${{ inputs.plugin }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          # --- Determine current tag ---
+          if [[ -n "${RELEASE_TAG:-}" ]]; then
+            CURRENT_TAG="${RELEASE_TAG}"
+          else
+            # workflow_dispatch — use latest release tag
+            CURRENT_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || true)
+            if [[ -z "${CURRENT_TAG}" ]]; then
+              echo "::error::No release found and no tag provided"
+              exit 1
+            fi
+          fi
+          echo "Current tag: ${CURRENT_TAG}"
+
+          # --- Find previous release tag (skip drafts and prereleases) ---
+          PREV_TAG=""
+          if [[ -n "${RELEASE_TAG:-}" ]]; then
+            PREV_TAG=$(gh release list --limit 50 --json tagName,isDraft,isPrerelease \
+              --jq "[.[] | select(.isDraft == false and .isPrerelease == false and .tagName != \"${CURRENT_TAG}\")] | .[0].tagName // empty" \
+              2>/dev/null || true)
+          fi
+          echo "Previous tag: ${PREV_TAG:-"(none — first release)"}"
+
+          # --- Enumerate plugins ---
+          PLUGINS=()
+          for manifest in plugins/*/.claude-plugin/plugin.json; do
+            [[ -f "${manifest}" ]] || continue
+            dir=$(dirname "$(dirname "${manifest}")")
+            name=$(basename "${dir}")
+            PLUGINS+=("${name}")
+          done
+
+          if [[ ${#PLUGINS[@]} -eq 0 ]]; then
+            echo "::warning::No plugins found under plugins/*/"
+            echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
+            echo "has_plugins=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # --- Filter to changed plugins ---
+          CHANGED=()
+          for name in "${PLUGINS[@]}"; do
+            # Manual dispatch with explicit plugin name
+            if [[ -n "${INPUT_PLUGIN:-}" ]]; then
+              if [[ "${name}" == "${INPUT_PLUGIN}" ]]; then
+                CHANGED+=("${name}")
+              fi
+              continue
+            fi
+
+            # First release or no previous tag — include all
+            if [[ -z "${PREV_TAG}" ]]; then
+              CHANGED+=("${name}")
+              continue
+            fi
+
+            # Diff between tags
+            if ! git diff --quiet "${PREV_TAG}..${CURRENT_TAG}" -- "plugins/${name}/"; then
+              CHANGED+=("${name}")
+            fi
+          done
+
+          # --- Build JSON matrix ---
+          MATRIX='{"include":['
+          FIRST=true
+          for name in "${CHANGED[@]}"; do
+            if [[ "${FIRST}" == "true" ]]; then
+              FIRST=false
+            else
+              MATRIX+=","
+            fi
+            MATRIX+="{\"plugin\":\"${name}\"}"
+          done
+          MATRIX+=']}'
+
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+
+          if [[ ${#CHANGED[@]} -gt 0 ]]; then
+            echo "has_plugins=true" >> "$GITHUB_OUTPUT"
+            echo "Plugins to publish: ${CHANGED[*]}"
+          else
+            echo "has_plugins=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No plugins changed since ${PREV_TAG}"
+          fi
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 2: Publish each changed plugin to npm and upload to GitHub release
+  # ──────────────────────────────────────────────────────────────────────────
+  publish:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_plugins == 'true'
+    permissions:
+      contents: write # upload release assets
+      id-token: write # npm trusted publishing (OIDC)
+    # Requires manual approval from a team member who is NOT the person that
+    # triggered the workflow (environment configured with "required reviewers"
+    # and "prevent self-review" in repository settings).
+    environment: publish
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Verify npm version
+        run: |
+          set -euo pipefail
+          NPM_VERSION=$(npm --version)
+          echo "npm version: ${NPM_VERSION}"
+
+          # Trusted Publishing requires npm >= 11.5.1
+          REQUIRED="11.5.1"
+          if [[ "$(printf '%s\n' "${REQUIRED}" "${NPM_VERSION}" | sort -V | head -n1)" != "${REQUIRED}" ]]; then
+            echo "::error::npm ${NPM_VERSION} is too old for Trusted Publishing. Required: >= ${REQUIRED}"
+            exit 1
+          fi
+
+      - name: Read plugin manifest
+        id: plugin
+        working-directory: plugins/${{ matrix.plugin }}
+        run: |
+          set -euo pipefail
+          MANIFEST=".claude-plugin/plugin.json"
+
+          if [[ ! -f "${MANIFEST}" ]]; then
+            echo "::error::Missing ${MANIFEST} in plugins/${{ matrix.plugin }}"
+            exit 1
+          fi
+
+          # Extract fields from plugin.json
+          NAME=$(jq -r '.name' "${MANIFEST}")
+          VERSION=$(jq -r '.version // "0.0.0"' "${MANIFEST}")
+          DESCRIPTION=$(jq -r '.description // ""' "${MANIFEST}")
+          LICENSE=$(jq -r '.license // "Apache-2.0"' "${MANIFEST}")
+          AUTHOR_NAME=$(jq -r '.author.name // "Amazon Web Services"' "${MANIFEST}")
+          HOMEPAGE=$(jq -r '.homepage // ""' "${MANIFEST}")
+          REPOSITORY=$(jq -r '.repository // ""' "${MANIFEST}")
+          KEYWORDS=$(jq -c '.keywords // []' "${MANIFEST}")
+
+          NPM_SCOPE="agent-plugins-for-aws"
+          FULL_NAME="@${NPM_SCOPE}/${NAME}"
+
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "description=${DESCRIPTION}" >> "$GITHUB_OUTPUT"
+          echo "license=${LICENSE}" >> "$GITHUB_OUTPUT"
+          echo "author_name=${AUTHOR_NAME}" >> "$GITHUB_OUTPUT"
+          echo "homepage=${HOMEPAGE}" >> "$GITHUB_OUTPUT"
+          echo "repository=${REPOSITORY}" >> "$GITHUB_OUTPUT"
+          echo "keywords=${KEYWORDS}" >> "$GITHUB_OUTPUT"
+          echo "full_name=${FULL_NAME}" >> "$GITHUB_OUTPUT"
+          echo "npm_scope=${NPM_SCOPE}" >> "$GITHUB_OUTPUT"
+
+          echo "Plugin: ${FULL_NAME}@${VERSION}"
+
+      - name: Check if version already published
+        id: check
+        env:
+          FULL_NAME: ${{ steps.plugin.outputs.full_name }}
+          VERSION: ${{ steps.plugin.outputs.version }}
+        run: |
+          set -euo pipefail
+          if npm view "${FULL_NAME}@${VERSION}" version --registry=https://registry.npmjs.org 2>/dev/null; then
+            echo "::notice::${FULL_NAME}@${VERSION} is already published — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate package.json
+        if: steps.check.outputs.skip != 'true'
+        working-directory: plugins/${{ matrix.plugin }}
+        env:
+          PLUGIN_NAME: ${{ steps.plugin.outputs.full_name }}
+          PLUGIN_VERSION: ${{ steps.plugin.outputs.version }}
+          PLUGIN_DESCRIPTION: ${{ steps.plugin.outputs.description }}
+          PLUGIN_LICENSE: ${{ steps.plugin.outputs.license }}
+          PLUGIN_AUTHOR_NAME: ${{ steps.plugin.outputs.author_name }}
+          PLUGIN_HOMEPAGE: ${{ steps.plugin.outputs.homepage }}
+          PLUGIN_REPOSITORY: ${{ steps.plugin.outputs.repository }}
+          PLUGIN_KEYWORDS: ${{ steps.plugin.outputs.keywords }}
+          PLUGIN_DIR: plugins/${{ matrix.plugin }}
+        run: |
+          set -euo pipefail
+
+          jq -n \
+            --arg name "${PLUGIN_NAME}" \
+            --arg version "${PLUGIN_VERSION}" \
+            --arg description "${PLUGIN_DESCRIPTION}" \
+            --arg license "${PLUGIN_LICENSE}" \
+            --arg author_name "${PLUGIN_AUTHOR_NAME}" \
+            --arg homepage "${PLUGIN_HOMEPAGE}" \
+            --arg repo_url "${PLUGIN_REPOSITORY}" \
+            --arg directory "${PLUGIN_DIR}" \
+            --argjson keywords "${PLUGIN_KEYWORDS}" \
+            '{
+              name: $name,
+              version: $version,
+              description: $description,
+              license: $license,
+              author: { name: $author_name },
+              keywords: $keywords,
+              repository: {
+                type: "git",
+                url: ("git+" + $repo_url + ".git"),
+                directory: $directory
+              },
+              homepage: $homepage
+            }' > package.json
+
+          echo "Generated package.json:"
+          cat package.json
+
+      - name: Copy LICENSE
+        if: steps.check.outputs.skip != 'true'
+        working-directory: plugins/${{ matrix.plugin }}
+        run: |
+          if [[ ! -f LICENSE ]]; then
+            cp ../../LICENSE LICENSE
+            echo "Copied root LICENSE into plugin directory"
+          fi
+
+      - name: Pack
+        if: steps.check.outputs.skip != 'true'
+        id: pack
+        working-directory: plugins/${{ matrix.plugin }}
+        env:
+          PLUGIN_NAME: ${{ steps.plugin.outputs.name }}
+          PLUGIN_VERSION: ${{ steps.plugin.outputs.version }}
+        run: |
+          set -euo pipefail
+          ARTIFACT="${PLUGIN_NAME}-npmjs-${PLUGIN_VERSION}.tgz"
+
+          npm pack
+
+          # npm pack produces <scope>-<name>-<version>.tgz (@ and / replaced)
+          PACKED=$(ls -1 *.tgz)
+          mv "${PACKED}" "${ARTIFACT}"
+          echo "artifact=${ARTIFACT}" >> "$GITHUB_OUTPUT"
+          echo "Packed: ${ARTIFACT}"
+
+      - name: Publish to npm
+        if: steps.check.outputs.skip != 'true'
+        working-directory: plugins/${{ matrix.plugin }}
+        env:
+          ARTIFACT: ${{ steps.pack.outputs.artifact }}
+        run: |
+          set -euo pipefail
+          npm publish "${ARTIFACT}" --access public --provenance
+
+      - name: Upload release asset
+        if: steps.check.outputs.skip != 'true' && github.event.release.tag_name != ''
+        working-directory: plugins/${{ matrix.plugin }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          ARTIFACT: ${{ steps.pack.outputs.artifact }}
+        run: |
+          set -euo pipefail
+          gh release upload "${RELEASE_TAG}" "${ARTIFACT}" --clobber
+
+      - name: Job summary
+        if: always()
+        env:
+          FULL_NAME: ${{ steps.plugin.outputs.full_name }}
+          VERSION: ${{ steps.plugin.outputs.version }}
+          SKIP: ${{ steps.check.outputs.skip }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          ARTIFACT: ${{ steps.pack.outputs.artifact }}
+        run: |
+          {
+            echo "## Plugin: \`${FULL_NAME}\`"
+            echo ""
+            if [[ "${SKIP}" == "true" ]]; then
+              echo ":next_track_button: **Skipped** — \`${FULL_NAME}@${VERSION}\` was already published."
+            else
+              echo ":package: **Published** \`${FULL_NAME}@${VERSION}\` to npm"
+              echo ""
+              echo "- **Registry**: [npmjs.com](https://www.npmjs.com/package/${FULL_NAME})"
+              echo "- **Provenance**: :white_check_mark: Signed via Trusted Publishing"
+              if [[ -n "${RELEASE_TAG}" ]]; then
+                echo "- **Release asset**: \`${ARTIFACT}\`"
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
