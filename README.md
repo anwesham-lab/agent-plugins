@@ -26,11 +26,12 @@ To maximize the benefits of plugin-assisted development while maintaining securi
 
 ## Plugins
 
-| Plugin                      | Description                                                                                                       | Status    |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------- |
-| **deploy-on-aws**           | Deploy applications to AWS with architecture recommendations, cost estimates, and IaC deployment                  | Available |
-| **amazon-location-service** | Add maps, geocoding, routing, places search, and geospatial features to applications with Amazon Location Service | Available |
-| **aws-serverless**          | Build serverless applications with Lambda, API Gateway, EventBridge, Step Functions, and durable functions        | Available |
+| Plugin                      | Description                                                                                                            | Status    |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------- |
+| **deploy-on-aws**           | Deploy applications to AWS with architecture recommendations, cost estimates, and IaC deployment                       | Available |
+| **amazon-location-service** | Add maps, geocoding, routing, places search, and geospatial features to applications with Amazon Location Service      | Available |
+| **migration-to-aws**        | Migrate GCP infrastructure to AWS with resource discovery, architecture mapping, cost analysis, and execution planning | Available |
+| **aws-serverless**          | Build serverless applications with Lambda, API Gateway, EventBridge, Step Functions, and durable functions             | Available |
 
 ## Installation
 
@@ -52,6 +53,12 @@ or
 
 ```bash
 /plugin install amazon-location-service@agent-plugins-for-aws
+```
+
+or
+
+```bash
+/plugin install migration-to-aws@agent-plugins-for-aws
 ```
 
 ### Cursor
@@ -106,6 +113,31 @@ Guides developers through adding maps, places search, geocoding, routing, and ot
 | Server      | Purpose                                |
 | ----------- | -------------------------------------- |
 | **aws-mcp** | AWS documentation and service guidance |
+
+## migration-to-aws
+
+Helps you systematically migrate GCP infrastructure to AWS through Terraform resource discovery, architecture mapping, cost estimation, and execution planning.
+
+### Workflow
+
+1. **Discover** - Scan Terraform files for GCP resources and extract infrastructure
+2. **Clarify** - Understand compute workloads and architecture patterns
+3. **Design** - Map GCP services to AWS equivalents with rationale
+4. **Estimate** - Calculate monthly AWS costs and compare to GCP
+5. **Execute** - Plan migration timeline and identify deployment risks
+
+### Agent Skill Triggers
+
+| Agent Skill    | Triggers                                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **gcp-to-aws** | "migrate GCP to AWS", "move from GCP", "GCP migration plan", "estimate AWS costs", "GCP infrastructure assessment" |
+
+### MCP Servers
+
+| Server           | Purpose                                          |
+| ---------------- | ------------------------------------------------ |
+| **awsknowledge** | AWS documentation, architecture guidance         |
+| **awspricing**   | Real-time AWS service pricing for cost estimates |
 
 ## Requirements
 
