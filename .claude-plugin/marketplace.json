@@ -80,6 +80,27 @@
       "version": "1.0.0"
     },
     {
+      "category": "development",
+      "description": "Analyze codebases to generate structured technical documentation with source-of-truth citations. Optimized for AWS workloads using CDK, CloudFormation, and Terraform.",
+      "keywords": [
+        "aws",
+        "aws agent skills",
+        "documentation",
+        "architecture",
+        "diagram",
+        "draw.io",
+        "codebase-analysis",
+        "cdk",
+        "cloudformation",
+        "terraform",
+        "onboarding"
+      ],
+      "name": "codebase-documentor-for-aws",
+      "source": "./plugins/codebase-documentor-for-aws",
+      "tags": ["aws", "documentation", "architecture", "diagram"],
+      "version": "0.1.0"
+    },
+    {
       "category": "database",
       "description": "Expert database guidance for the AWS database portfolio. Design schemas, execute queries, handle migrations, and choose the right database for your workload.",
       "keywords": [
