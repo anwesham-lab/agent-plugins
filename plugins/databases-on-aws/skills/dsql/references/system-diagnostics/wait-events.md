@@ -21,6 +21,7 @@ Aurora DSQL exposes wait events via the `db.wait.event` label on `db.active_sess
 | FkExistenceCheck      | Validation  | Storage reads to validate foreign key existence                                                            |
 | UniqueConstraintCheck | Validation  | Storage reads to validate unique key constraints for non-primary columns                                   |
 | Commit                | Transaction | Commit process has begun, and QP is waiting for a response                                                 |
+| StartTransaction      | Transaction | Waiting for distributed transaction start                                                                  |
 | PgSleep               | Application | Session issued `pg_sleep()` and is waiting for the sleep period to complete                                |
 
 ---
@@ -191,6 +192,25 @@ Commit process has begun, and QP is waiting for a response.
    - If OccConflicts grows faster than TotalTransactions → conflict-dominated (report this observation)
    - If TotalTransactions grows proportionally to Commit AAS → legitimate load growth (report this observation)
 3. If OCC conflicts are the growing component, hand off to Workflow 9 for transaction-pattern analysis and conflict mitigation — do not prescribe schema or transaction changes from CloudWatch data alone
+
+---
+
+## StartTransaction
+
+Waiting for distributed transaction start — the time a session spends while DSQL coordinates the operations needed to begin a new transaction.
+
+**Possible causes** (candidates to confirm — see the observe-only guardrail above):
+
+- High transaction frequency (many short transactions, each paying the fixed start cost)
+- Workload shift toward more fine-grained transactions vs fewer large ones
+
+This is internal DSQL infrastructure overhead; there are no user-tunable parameters that affect the per-transaction start cost itself. Its value in diagnostics is purely **proportional** — a growing share indicates a shift in workload pattern.
+
+**Observe-only steps:**
+
+1. Note whether StartTransaction's proportion of total AAS has changed by >30% vs the temporal baseline: `sum by ("db.wait.event")({__name__="db.active_sessions.avg", "db.wait.event"="StartTransaction", ...})`
+2. If the proportion grew significantly, it likely reflects an increase in transaction frequency — correlate with the `TotalTransactions` CW metric (namespace `AWS/AuroraDSQL`, `statistic="Sum"` — it is a cumulative counter) to confirm
+3. Report the observation — do not recommend transaction batching, connection pooling changes, or other remediations from CloudWatch data alone. This is fixed internal overhead with no user-facing tuning knob.
 
 ---
 
