@@ -49,7 +49,8 @@ transact([
      stock INTEGER DEFAULT 0 CHECK (stock >= 0),
      is_active BOOLEAN DEFAULT true,
      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+     FOREIGN KEY (tenant_id) REFERENCES tenants(id)
    )"
 ])
 
@@ -75,7 +76,7 @@ transact(["CREATE INDEX ASYNC idx_products_category ON products(tenant_id, categ
 | `TINYINT(1)`                  | `BOOLEAN`                                                                                                                                                  |
 | `DATETIME`                    | `TIMESTAMP`                                                                                                                                                |
 | `ON UPDATE CURRENT_TIMESTAMP` | Application-layer `SET updated_at = CURRENT_TIMESTAMP`                                                                                                     |
-| `FOREIGN KEY`                 | Application-layer referential integrity                                                                                                                    |
+| `FOREIGN KEY`                 | Preserve as a native DSQL foreign key; include `tenant_id` in composite keys for multi-tenant relationships                                                |
 | `INDEX`                       | `CREATE INDEX ASYNC`                                                                                                                                       |
 | `FULLTEXT INDEX`              | Application-layer text search                                                                                                                              |
 | `ENGINE=InnoDB`               | MUST omit                                                                                                                                                  |
@@ -100,7 +101,8 @@ transact(["CREATE INDEX ASYNC idx_products_category ON products(tenant_id, categ
 - **MUST replace** ENUM with VARCHAR and CHECK constraint
 - **MUST serialize** SET into a single-column representation; **PREFER `JSONB`** (operators work directly), with **`TEXT`** as a MAY for opaque columns; **ASK** the user
 - **SHOULD keep** JSON columns as `JSON`; **MAY upgrade to `JSONB`** when the application needs `@>`/`?`/indexed JSONB paths; **ASK** the user about query patterns
-- **MUST replace** FOREIGN KEY constraints with application-layer referential integrity
+- **MUST preserve** supported FOREIGN KEY constraints as native DSQL constraints
+- **MUST add** post-creation foreign keys with `NOT VALID`, then validate with a separate `ALTER TABLE ASYNC ... VALIDATE CONSTRAINT`
 - **MUST replace** ON UPDATE CURRENT_TIMESTAMP with application-layer updates
 - **MUST convert** all index creation to use CREATE INDEX ASYNC
 - **MUST omit** ENGINE, CHARSET, COLLATE, and other MySQL-specific table options

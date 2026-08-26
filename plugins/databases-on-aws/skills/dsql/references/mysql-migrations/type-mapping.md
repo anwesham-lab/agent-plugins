@@ -108,7 +108,7 @@ MUST use the following DSQL alternatives for these MySQL features:
 
 | MySQL Feature                      | DSQL Alternative                                    |
 | ---------------------------------- | --------------------------------------------------- |
-| FOREIGN KEY constraints            | Application-layer referential integrity             |
+| FOREIGN KEY constraints            | Native foreign key constraints                      |
 | FULLTEXT indexes                   | Application-layer text search                       |
 | SPATIAL indexes                    | Application-layer spatial queries                   |
 | ENGINE=InnoDB/MyISAM               | MUST omit (DSQL manages storage automatically)      |
@@ -150,22 +150,31 @@ These MySQL operations MUST use the **Table Recreation Pattern** in DSQL:
 | `ALTER TABLE ... ALTER COLUMN col DROP DEFAULT`                | Table recreation without DEFAULT                              |
 | `ALTER TABLE ... ADD CONSTRAINT ... UNIQUE`                    | Table recreation with constraint                              |
 | `ALTER TABLE ... ADD CONSTRAINT ... CHECK`                     | Table recreation with constraint                              |
-| `ALTER TABLE ... DROP CONSTRAINT ...`                          | Table recreation without constraint                           |
+| `ALTER TABLE ... DROP CONSTRAINT ...` (non-FK)                 | Table recreation without constraint                           |
 | `ALTER TABLE ... DROP PRIMARY KEY, ADD PRIMARY KEY (new_cols)` | Table recreation with new PK                                  |
+
+### Foreign Key Migration
+
+Foreign key operations are exceptions to the table-recreation mapping above. Add a foreign key
+without an initial scan, validate existing rows asynchronously, and drop it directly:
+
+| MySQL DDL                          | DSQL Approach                                                                                 |
+| ---------------------------------- | --------------------------------------------------------------------------------------------- |
+| `ALTER TABLE ... ADD FOREIGN KEY`  | Add with `NOT VALID`, then run `ALTER TABLE ASYNC ... VALIDATE CONSTRAINT` in a separate step |
+| `ALTER TABLE ... DROP FOREIGN KEY` | Drop directly with `ALTER TABLE ... DROP CONSTRAINT`                                          |
 
 ### Operations Requiring Application-Layer Implementation
 
 MUST implement these MySQL operations at the application layer:
 
-| MySQL DDL                              | DSQL Approach                                             |
-| -------------------------------------- | --------------------------------------------------------- |
-| `ALTER TABLE ... ADD FOREIGN KEY`      | MUST implement referential integrity in application layer |
-| `ALTER TABLE ... ADD FULLTEXT INDEX`   | MUST implement text search in application layer           |
-| `ALTER TABLE ... ADD SPATIAL INDEX`    | MUST implement spatial queries in application layer       |
-| `ALTER TABLE ... ENGINE=...`           | MUST omit                                                 |
-| `ALTER TABLE ... AUTO_INCREMENT=...`   | Use SEQUENCE with setval() or IDENTITY column             |
-| `CREATE TRIGGER`                       | MUST implement in application-layer logic                 |
-| `CREATE PROCEDURE` / `CREATE FUNCTION` | MUST implement in application-layer logic                 |
+| MySQL DDL                              | DSQL Approach                                       |
+| -------------------------------------- | --------------------------------------------------- |
+| `ALTER TABLE ... ADD FULLTEXT INDEX`   | MUST implement text search in application layer     |
+| `ALTER TABLE ... ADD SPATIAL INDEX`    | MUST implement spatial queries in application layer |
+| `ALTER TABLE ... ENGINE=...`           | MUST omit                                           |
+| `ALTER TABLE ... AUTO_INCREMENT=...`   | Use SEQUENCE with setval() or IDENTITY column       |
+| `CREATE TRIGGER`                       | MUST implement in application-layer logic           |
+| `CREATE PROCEDURE` / `CREATE FUNCTION` | MUST implement in application-layer logic           |
 
 ---
 

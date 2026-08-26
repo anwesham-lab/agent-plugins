@@ -56,6 +56,14 @@ readonly_query(
 
 ---
 
+## FOREIGN KEY CONSTRAINTS
+
+Foreign keys do not use table recreation. Follow
+[Native Foreign Keys](../foreign-keys.md#existing-tables) to add a constraint with `NOT VALID`,
+validate it asynchronously, or drop it directly.
+
+---
+
 ## ADD UNIQUE CONSTRAINT Migration
 
 **Goal:** Add a UNIQUE constraint to an existing table (requires table recreation).

@@ -64,11 +64,23 @@ The cluster is `INACTIVE` and waking up. Poll `aws dsql get-cluster --identifier
 
 Connect to the cluster to wake it, then retry the backup.
 
+## Foreign Key Addition or Validation Fails
+
+**Addition failure:** Aurora DSQL rejects `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY`
+without `NOT VALID`. Add the post-creation constraint with `NOT VALID`.
+
+**Validation-job failure:** Existing referencing rows do not match a referenced row. Find and
+repair those referencing rows, rerun `ALTER TABLE ASYNC ... VALIDATE CONSTRAINT`, and monitor the
+returned job through `sys.jobs`.
+
+For SQLSTATE `40001` during concurrent referenced-row and referencing-row writes, retry the
+complete transaction. For transaction-limit errors during cascades, batch the referenced-row
+changes so direct and cascaded writes remain within the current row and data-size limits.
+
 ## Incompatibility
 
 When migrating from PostgreSQL, remember DSQL doesn't support:
 
-- **Foreign key constraints** - Enforce referential integrity in application code
 - **SERIAL types** - Use `GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY` with sequences instead
 - **Extensions** - No PL/pgSQL, PostGIS, pgvector, etc.
 - **Triggers** - Implement logic in application layer
@@ -79,16 +91,6 @@ When migrating from PostgreSQL, remember DSQL doesn't support:
 - **Partitioning** - Manage data distribution in application
 
 See [full list of unsupported features](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/working-with-postgresql-compatibility-unsupported-features.html).
-
-### Error: "Foreign key constraint not supported"
-
-**Cause:** Attempting to create FOREIGN KEY constraint
-**Solution:**
-
-1. Remove FOREIGN KEY from DDL
-2. Implement validation in application code
-3. Check parent exists before INSERT
-4. Check dependents before DELETE
 
 ### Error: "Datatype array not supported"
 

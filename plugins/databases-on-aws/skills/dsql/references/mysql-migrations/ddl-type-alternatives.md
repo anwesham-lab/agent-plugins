@@ -130,34 +130,21 @@ CREATE TABLE orders (
 );
 ```
 
-**MUST implement referential integrity at the application layer:**
+**DSQL equivalent for new tables:**
 
 ```sql
--- Create table with reference column (enforce integrity in application layer)
-transact([
-  "CREATE TABLE orders (
-     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-     customer_id UUID NOT NULL
-   )"
-])
-
--- Create index for the reference column
-transact(["CREATE INDEX ASYNC idx_orders_customer ON orders(customer_id)"])
+CREATE TABLE orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id INTEGER NOT NULL,
+  CONSTRAINT orders_customer_fkey
+    FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
 ```
 
-**Application layer MUST enforce referential integrity:**
+For an existing referencing table, follow
+[Native Foreign Keys](../foreign-keys.md#existing-tables) to add the constraint with `NOT VALID`
+and validate it asynchronously.
 
-```sql
--- Before INSERT: validate parent exists
-readonly_query(
-  "SELECT id FROM customers WHERE id = 'customer-uuid'"
-)
--- MUST abort INSERT if parent not found
-
--- Before DELETE of parent: check for dependents
-readonly_query(
-  "SELECT COUNT(*) as dependent_count FROM orders
-   WHERE customer_id = 'customer-uuid'"
-)
--- MUST abort DELETE if dependent_count > 0
-```
+Preserve DSQL-supported target actions when translating the constraint: `NO ACTION`, `RESTRICT`,
+`CASCADE`, `SET NULL`, and `SET DEFAULT`. For multi-tenant schemas, include `tenant_id` in both
+the referenced key and the foreign key. See [Native Foreign Keys](../foreign-keys.md).

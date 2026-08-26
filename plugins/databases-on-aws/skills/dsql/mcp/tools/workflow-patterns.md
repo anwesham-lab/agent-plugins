@@ -85,27 +85,12 @@ inserts = [
 transact(inserts)
 ```
 
-## Pattern 5: Application-Layer Foreign Key Check
+## Pattern 5: Native Foreign Key
 
-```python
-from safe_query import build, regex, literal, UUID, TENANT_SLUG
-
-check = build(
-    "SELECT entity_id FROM entities "
-    "WHERE entity_id = {eid} AND tenant_id = {tid}",
-    eid=regex(parent_id, UUID),
-    tid=regex(tenant_id, TENANT_SLUG),
-)
-if not readonly_query(check):
-    raise ValueError("Invalid parent reference")
-
-insert = build(
-    "INSERT INTO objectives (objective_id, entity_id, tenant_id, title) "
-    "VALUES ({oid}, {eid}, {tid}, {title})",
-    oid=regex(new_objective_id, UUID),
-    eid=regex(parent_id, UUID),
-    tid=regex(tenant_id, TENANT_SLUG),
-    title=literal(objective_title),
-)
-transact([insert])
+```sql
+FOREIGN KEY (tenant_id, entity_id)
+  REFERENCES entities (tenant_id, entity_id)
 ```
+
+Use a composite foreign key so the database rejects missing and cross-tenant references. See
+[Native Foreign Keys](../../references/foreign-keys.md) for the complete workflow.

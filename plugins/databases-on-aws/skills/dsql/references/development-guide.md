@@ -16,7 +16,8 @@ effortless scaling, multi-region viability, among other advantages.
 - **MUST serialize arrays** into a single-column representation; **PREFER `JSONB`** (operators work directly); **MAY use `TEXT`** when the column is opaque to the database; **ASK** the user - see [Schema Design Rules](#schema-design-rules)
 - **ALWAYS Batch within row limit** - maintain transaction limits (verify via `awsknowledge`: `aurora dsql transaction limits`)
 - **REQUIRED: Build and sanitize all SQL with `safe_query.build()`** - See [Input Validation](../mcp/tools/input-validation.md#required-pattern)
-- **MUST follow correct Application Layer Patterns** - when multi-tenant isolation or application referential integrity are required; refer to [Application Layer Patterns](#application-layer-patterns)
+- **MUST use native foreign keys** when database-enforced referential integrity is required; refer to [Foreign Key Rules](#foreign-key-rules)
+- **MUST enforce tenant authorization** for multi-tenant isolation; refer to [Tenant Authorization Patterns](#tenant-authorization-patterns)
 - **REQUIRED use DELETE for truncation** - DELETE is the only supported operation for truncation
 - **SHOULD test any migrations** - Verify DDL on dev clusters before production
 - **Plan for Horizontal Scale** - DSQL is designed to optimize for massive scales without latency drops; refer to [Horizontal Scaling](auth/scaling-guide.md)
@@ -79,6 +80,9 @@ effortless scaling, multi-region viability, among other advantages.
   - Then validate asynchronously: `ALTER TABLE ASYNC t VALIDATE CONSTRAINT c` — returns a `job_id`
   - **MUST** monitor via `sys.jobs` or block with `SELECT sys.wait_for_job('job_id')`
   - Constraint applies to new rows immediately; existing rows validated in background
+- **MUST** add post-creation foreign keys with `NOT VALID`
+  - Validate with `ALTER TABLE ASYNC ... VALIDATE CONSTRAINT`
+  - Monitor via `sys.jobs` or `CALL sys.wait_for_job('job_id')`
 - **Asynchronous Execution:** DDL ALWAYS runs asynchronously
 - To add a column with DEFAULT or NOT NULL:
   1. MUST issue ADD COLUMN specifying only the column name and data type
@@ -97,16 +101,14 @@ Verify current limits via `awsknowledge`: `aurora dsql transaction limits`
 
 ---
 
-### Application-Layer Patterns
+### Foreign Key Rules
 
-**MANDATORY for Application Referential Integrity:**
-If foreign key constraints (application referential integrity) are required,
-instead implementation:
+**MUST** load [Native Foreign Keys](foreign-keys.md) before creating, altering,
+dropping, or migrating a foreign key.
 
-- MUST validate parent references before INSERT
-- MUST check for dependents before DELETE
-- MUST implement cascade logic in application code
-- MUST handle orphaned records in application layer
+---
+
+### Tenant Authorization Patterns
 
 **MANDATORY for Multi-Tenant Isolation:**
 
@@ -146,11 +148,8 @@ Arrays and `INET` are **[runtime-only](https://docs.aws.amazon.com/aurora-dsql/l
 ### Supported Key
 
 ```
-PRIMARY KEY, UNIQUE, NOT NULL, CHECK, DEFAULT (in CREATE TABLE)
+PRIMARY KEY, UNIQUE, FOREIGN KEY, NOT NULL, CHECK, DEFAULT (in CREATE TABLE)
 ```
-
-Join on any keys; DSQL preserves DB referential integrity, when needed application referential
-integrity must be separately enforced.
 
 ### Transaction Requirements
 

@@ -55,7 +55,9 @@ The following ALTER TABLE operations MUST use the **Table Recreation Pattern**:
 | MODIFY PRIMARY KEY             | Define new PK, validate uniqueness first       |
 | Split/Merge Columns            | Use SPLIT_PART, SUBSTRING, or CONCAT in SELECT |
 
-**Note:** The following operations ARE supported directly:
+**Foreign key exception:** Add a foreign key constraint to an existing table with `NOT VALID`,
+then validate it with `ALTER TABLE ASYNC ... VALIDATE CONSTRAINT`. Drop a foreign key directly
+with `ALTER TABLE ... DROP CONSTRAINT`. The following operations are also supported directly:
 
 - `ALTER TABLE ... RENAME COLUMN` - Rename a column
 - `ALTER TABLE ... RENAME TO` - Rename a table

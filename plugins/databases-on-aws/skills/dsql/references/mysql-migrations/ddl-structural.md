@@ -12,12 +12,17 @@ Part of [MySQL to DSQL DDL Migration](ddl-operations.md). See [Common Verify & S
 ALTER TABLE table_name ADD CONSTRAINT constraint_name UNIQUE (column_name);
 ALTER TABLE table_name ADD CONSTRAINT constraint_name CHECK (condition);
 ALTER TABLE table_name DROP CONSTRAINT constraint_name;
+ALTER TABLE table_name DROP FOREIGN KEY foreign_key_name;
 -- or MySQL-specific:
 ALTER TABLE table_name DROP INDEX index_name;
 ALTER TABLE table_name DROP CHECK constraint_name;
 ```
 
-**DSQL:** MUST use **Table Recreation Pattern**.
+**DSQL:** MUST use **Table Recreation Pattern**, except for foreign keys.
+
+Add a foreign key with `NOT VALID`, validate it asynchronously, and drop it directly with
+`ALTER TABLE ... DROP CONSTRAINT`. See
+[Native Foreign Keys](../foreign-keys.md).
 
 ### Pre-Migration Validation (for ADD CONSTRAINT)
 
