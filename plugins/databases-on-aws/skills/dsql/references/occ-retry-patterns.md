@@ -86,15 +86,15 @@ for Java, Go, Node.js, and Rust implementations.
 
 ## Conflict Mitigation
 
-| Scenario                          | Conflict Risk | Mitigation                                                                   |
-| --------------------------------- | ------------- | ---------------------------------------------------------------------------- |
-| Counter/balance updates           | High          | Shard counters, use CACHE 65536 sequences (DSQL minimum for high-throughput) |
-| Status field updates (same row)   | High          | Keep transactions short                                                      |
-| Batch updates overlapping rows    | Medium        | Smaller batches, randomize order                                             |
-| Long-running transactions         | Medium        | Break into smaller units — DSQL transaction timeout is 5 min                 |
-| Cross-region writes to same rows  | High          | Geographic partitioning                                                      |
-| Child inserts against hot parents | High          | Shorten transactions and spread parent-key contention; retry only `40001`    |
-| INSERT-only workloads             | Low           | UUID PKs distribute writes                                                   |
+| Scenario                                 | Conflict Risk | Mitigation                                                                   |
+| ---------------------------------------- | ------------- | ---------------------------------------------------------------------------- |
+| Counter/balance updates                  | High          | Shard counters, use CACHE 65536 sequences (DSQL minimum for high-throughput) |
+| Status field updates (same row)          | High          | Keep transactions short                                                      |
+| Batch updates overlapping rows           | Medium        | Smaller batches, randomize order                                             |
+| Long-running transactions                | Medium        | Break into smaller units — DSQL transaction timeout is 5 min                 |
+| Cross-region writes to same rows         | High          | Geographic partitioning                                                      |
+| Child writes with referenced-key changes | High          | Keep referenced keys stable; retry only `40001`                              |
+| INSERT-only workloads                    | Low           | UUID PKs distribute writes                                                   |
 
 **Key strategies:**
 

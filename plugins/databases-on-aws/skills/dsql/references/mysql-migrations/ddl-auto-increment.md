@@ -1,8 +1,7 @@
 # MySQL to DSQL: AUTO_INCREMENT Migration
 
-Part of [MySQL to DSQL DDL Migration](ddl-operations.md). Complete the
-[Pre-Create Relationship and Dependency Gate](../ddl-migrations/overview.md#pre-create-relationship-and-dependency-gate)
-before every replacement-table Step 1, then follow the
+Part of [MySQL to DSQL DDL Migration](ddl-operations.md). For table recreation, read
+[Table Recreation](../ddl-migrations/overview.md#table-recreation), then follow the
 [Common Verify & Swap Pattern](ddl-operations.md#common-verify--swap-pattern).
 
 ---
@@ -18,9 +17,9 @@ CREATE TABLE users (
 );
 ```
 
-DSQL provides three options for replacing MySQL's AUTO_INCREMENT. Choose based on your workload requirements. See [Choosing Identifier Types](../auth/scaling-guide.md#choosing-identifier-types) in the scaling guide for detailed guidance.
-
-**ALWAYS use `GENERATED AS IDENTITY`** for auto-incrementing integer columns.
+DSQL provides three identifier designs. Use `GENERATED AS IDENTITY` when preserving MySQL integer
+AUTO_INCREMENT semantics; choose UUID only when deliberately changing the identifier design. See
+[Choosing Identifier Types](../auth/scaling-guide.md#choosing-identifier-types) for detail.
 
 ### Option 1: UUID Primary Key (Recommended for Scalability)
 

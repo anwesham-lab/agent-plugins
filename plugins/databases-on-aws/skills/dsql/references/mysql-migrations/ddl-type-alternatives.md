@@ -138,7 +138,7 @@ transact([
 - InnoDB creates a referencing-side FK index implicitly. DSQL requires an explicit
   `CREATE INDEX ASYNC` when the access pattern needs that index.
 - For post-creation adds, follow
-  [Native Foreign Keys](../foreign-keys.md#dsql-specific-ddl).
+  [Foreign Key Constraints](../foreign-keys.md#dsql-specific-ddl).
 - For a tenant-scoped relationship where the database must enforce tenant equality, **MUST**
   include a non-null tenant key on both sides. Preserve ordinary foreign keys for shared or
   globally identified rows.

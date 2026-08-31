@@ -1,8 +1,7 @@
 # MySQL to DSQL: Structural Changes
 
-Part of [MySQL to DSQL DDL Migration](ddl-operations.md). Complete the
-[Pre-Create Relationship and Dependency Gate](../ddl-migrations/overview.md#pre-create-relationship-and-dependency-gate)
-before every replacement-table Step 1, then follow the
+Part of [MySQL to DSQL DDL Migration](ddl-operations.md). For table recreation, read
+[Table Recreation](../ddl-migrations/overview.md#table-recreation), then follow the
 [Common Verify & Swap Pattern](ddl-operations.md#common-verify--swap-pattern).
 
 ---
@@ -24,13 +23,16 @@ ALTER TABLE table_name DROP CHECK constraint_name;
 **DSQL direct mappings:**
 
 - Add a foreign key with `NOT VALID`, validate it asynchronously, and translate MySQL
-  `DROP FOREIGN KEY` to `DROP CONSTRAINT`. See [Native Foreign Keys](../foreign-keys.md).
+  `DROP FOREIGN KEY` to `DROP CONSTRAINT`. See [Foreign Key Constraints](../foreign-keys.md).
 - Add a CHECK constraint with `NOT VALID`, then validate it asynchronously. See
   [Constraint Operations](../ddl-migrations/constraint-operations.md#add-check-constraint-preferred).
 - Add a UNIQUE constraint through a completed `CREATE UNIQUE INDEX ASYNC`, then
   `ADD CONSTRAINT ... UNIQUE USING INDEX`. See
   [Constraint Operations](../ddl-migrations/constraint-operations.md#add-unique-constraint).
-- Use table recreation only when dropping a non-FK constraint that DSQL cannot drop directly.
+- Drop CHECK, UNIQUE, and foreign-key constraints directly with `DROP CONSTRAINT`. See
+  [Constraint Operations](../ddl-migrations/constraint-operations.md#drop-constraint).
+- Translate MySQL `ALTER TABLE table_name DROP INDEX index_name` to
+  `DROP INDEX index_name`.
 
 ### Pre-Migration Validation (for ADD CONSTRAINT)
 
@@ -51,43 +53,6 @@ readonly_query(
 )
 -- MUST ABORT if invalid_count > 0
 ```
-
-### Migration Steps (DROP CONSTRAINT)
-
-#### Step 1: Identify existing constraints
-
-```sql
-readonly_query(
-  "SELECT constraint_name, constraint_type
-   FROM information_schema.table_constraints
-   WHERE table_name = 'target_table'
-   AND constraint_type IN ('UNIQUE', 'CHECK')"
-)
-```
-
-#### Step 2: Create new table without the constraint
-
-```sql
-transact([
-  "CREATE TABLE target_table_new (
-     id UUID PRIMARY KEY,
-     email VARCHAR(255),  -- Removed UNIQUE constraint
-     other_column TEXT
-   )"
-])
-```
-
-#### Step 3: Copy data
-
-```sql
-transact([
-  "INSERT INTO target_table_new (id, email, other_column)
-   SELECT id, email, other_column
-   FROM target_table"
-])
-```
-
-**Step 4: Verify and swap** (see [Common Pattern](ddl-operations.md#common-verify--swap-pattern))
 
 ---
 
@@ -121,8 +86,8 @@ readonly_query(
 -- MUST ABORT if null_count > 0
 ```
 
-Review `inbound_relationships` from the
-[Pre-Create Relationship and Dependency Gate](../ddl-migrations/overview.md#pre-create-relationship-and-dependency-gate).
+Review dependencies before starting
+[Table Recreation](../ddl-migrations/overview.md#table-recreation).
 For every retained FK that references the current primary-key columns, the replacement **MUST**
 keep those columns covered by a `PRIMARY KEY` or `UNIQUE` constraint. Obtain explicit approval
 before removing a relationship; **MUST** abort when a retained FK cannot be restored.

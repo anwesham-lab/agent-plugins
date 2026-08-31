@@ -1,8 +1,8 @@
-# Native Foreign Keys
+# Foreign Key Constraints
 
-Aurora DSQL supports native foreign keys with familiar SQL syntax. Use foreign keys by default
-for database-enforced referential integrity. Preserve foreign-key relationships during migration
-and translate only unsupported source syntax or options.
+Aurora DSQL supports foreign key constraints with familiar SQL syntax. Use foreign keys by default
+for database-enforced referential integrity. Preserve foreign-key relationships during migration and
+translate only unsupported source syntax or options.
 
 ## Table of Contents
 
@@ -16,7 +16,7 @@ and translate only unsupported source syntax or options.
 
 Create the referenced table before the referencing table and use standard `REFERENCES` or
 `FOREIGN KEY ... REFERENCES` syntax. See
-[Native Foreign Key](../mcp/tools/workflow-patterns.md#pattern-5-native-foreign-key) for executable
+[Foreign Key Pattern](../mcp/tools/workflow-patterns.md#pattern-5-foreign-key) for executable
 composite tenant-key DDL.
 
 Use a unique referenced key and type-compatible referencing columns.
@@ -99,16 +99,15 @@ if not validated:
 ```
 
 Alternatively, call `sys.wait_for_job` through an autocommit database client and require its
-`succeeded` result to be true. MCP `readonly_query` and `transact` open explicit transactions, so
-they cannot call this procedure.
+`succeeded` result to be true. Use `sys.jobs` when the caller needs job status or failure details.
 
 ## Operational Notes
 
-- `MATCH SIMPLE` is the default, `MATCH FULL` enforces all-null or all-non-null keys, and Aurora
-  DSQL does not support `MATCH PARTIAL`.
-- **SHOULD** default to `NO ACTION` and `NOT DEFERRABLE`. Use `CASCADE`, `SET NULL`,
-  `SET DEFAULT`, or deferral only when the user explicitly intends the behavior and confirms
-  its impact.
+- Use default `MATCH SIMPLE`, or use `MATCH FULL` to require all-null or all-non-null composite
+  keys.
+- **SHOULD** default to `NO ACTION`. Use `CASCADE`, `SET NULL`, or `SET DEFAULT` only when the
+  user explicitly intends the behavior and confirms its impact. Choose deferrability to match the
+  transaction's validation point.
 - Use `DEFERRABLE` for circular relationships or ORM flush orders that cannot satisfy each FK
   statement-by-statement. Run `SET CONSTRAINTS` in the same explicit transaction as the related
   DML; a separate MCP `transact` call commits independently. Deferred violations surface at
@@ -130,9 +129,8 @@ Use `ALTER TABLE ... DROP CONSTRAINT` to remove a foreign key directly. Before d
 the named constraint with `pg_constraint.contype = 'f'`, explain the loss of database
 enforcement, and obtain confirmation.
 
-Table recreation **MUST** inventory and restore inbound and outbound foreign keys. Follow the
-[Table Recreation Pattern](ddl-migrations/overview.md#table-recreation-pattern-overview), which
-uses direct named drops so every inbound relationship has an explicit restore definition.
+When a table-recreation request involves foreign keys or dependent views, stop the generic pattern
+and present a dedicated, user-approved migration plan.
 
 ## Additional Resources
 

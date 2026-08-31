@@ -132,7 +132,7 @@ These MySQL operations have direct DSQL equivalents:
 | `ALTER TABLE ... ADD COLUMN col type`      | `ALTER TABLE ... ADD COLUMN col type`               |
 | `ALTER TABLE ... RENAME COLUMN old TO new` | `ALTER TABLE ... RENAME COLUMN old TO new`          |
 | `ALTER TABLE ... RENAME TO new_name`       | `ALTER TABLE ... RENAME TO new_name`                |
-| `CREATE TABLE ... FOREIGN KEY ...`         | Preserve the native foreign key                     |
+| `CREATE TABLE ... FOREIGN KEY ...`         | Preserve the foreign key constraint                 |
 | `ALTER TABLE ... ADD FOREIGN KEY`          | Add `NOT VALID`, then validate asynchronously       |
 | `ALTER TABLE ... DROP FOREIGN KEY`         | `ALTER TABLE ... DROP CONSTRAINT`                   |
 | `CREATE INDEX idx ON t(col)`               | `CREATE INDEX ASYNC idx ON t(col)` (MUST use ASYNC) |
@@ -142,23 +142,23 @@ These MySQL operations have direct DSQL equivalents:
 
 These MySQL operations MUST use the **Table Recreation Pattern** in DSQL:
 
-| MySQL DDL                                                      | DSQL Approach                                                 |
-| -------------------------------------------------------------- | ------------------------------------------------------------- |
-| `ALTER TABLE ... MODIFY COLUMN col new_type`                   | Table recreation with type cast                               |
-| `ALTER TABLE ... CHANGE COLUMN old new new_type`               | Table recreation (type change) or RENAME COLUMN (rename only) |
-| `ALTER TABLE ... ALTER COLUMN col datatype`                    | Table recreation with type cast                               |
-| `ALTER TABLE ... DROP COLUMN col`                              | Table recreation excluding the column                         |
-| `ALTER TABLE ... ALTER COLUMN col SET DEFAULT val`             | Table recreation with DEFAULT in new definition               |
-| `ALTER TABLE ... ALTER COLUMN col DROP DEFAULT`                | Table recreation without DEFAULT                              |
-| `ALTER TABLE ... ADD CONSTRAINT ... UNIQUE`                    | Table recreation with constraint                              |
-| `ALTER TABLE ... ADD CONSTRAINT ... CHECK`                     | Table recreation with constraint                              |
-| `ALTER TABLE ... DROP CONSTRAINT ...` (non-FK)                 | Table recreation without constraint                           |
-| `ALTER TABLE ... DROP PRIMARY KEY, ADD PRIMARY KEY (new_cols)` | Table recreation with new PK                                  |
+| MySQL DDL                                                      | DSQL Approach                                                    |
+| -------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `ALTER TABLE ... MODIFY COLUMN col new_type`                   | Table recreation with type cast                                  |
+| `ALTER TABLE ... CHANGE COLUMN old new new_type`               | Table recreation (type change) or RENAME COLUMN (rename only)    |
+| `ALTER TABLE ... ALTER COLUMN col datatype`                    | Table recreation with type cast                                  |
+| `ALTER TABLE ... DROP COLUMN col`                              | Table recreation excluding the column                            |
+| `ALTER TABLE ... ALTER COLUMN col SET DEFAULT val`             | Direct `ALTER COLUMN ... SET DEFAULT`                            |
+| `ALTER TABLE ... ALTER COLUMN col DROP DEFAULT`                | Direct `ALTER COLUMN ... DROP DEFAULT`                           |
+| `ALTER TABLE ... ADD CONSTRAINT ... UNIQUE`                    | Async unique index, then `ADD CONSTRAINT ... UNIQUE USING INDEX` |
+| `ALTER TABLE ... ADD CONSTRAINT ... CHECK`                     | `ADD CONSTRAINT ... CHECK ... NOT VALID`, then async validate    |
+| `ALTER TABLE ... DROP CONSTRAINT ...` (CHECK/UNIQUE/FK)        | Direct `DROP CONSTRAINT`                                         |
+| `ALTER TABLE ... DROP PRIMARY KEY, ADD PRIMARY KEY (new_cols)` | Table recreation with new PK                                     |
 
 ### Foreign Key Migration
 
 Use the direct mappings above and follow
-[Native Foreign Keys](../foreign-keys.md#dsql-specific-ddl) for post-creation adds and
+[Foreign Key Constraints](../foreign-keys.md#dsql-specific-ddl) for post-creation adds and
 validation.
 
 ### Operations Requiring Application-Layer Implementation

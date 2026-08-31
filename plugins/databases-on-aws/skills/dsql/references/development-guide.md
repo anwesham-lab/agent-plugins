@@ -16,7 +16,7 @@ effortless scaling, multi-region viability, among other advantages.
 - **MUST serialize arrays** into a single-column representation; **PREFER `JSONB`** (operators work directly); **MAY use `TEXT`** when the column is opaque to the database; **ASK** the user - see [Schema Design Rules](#schema-design-rules)
 - **ALWAYS Batch within row limit** - maintain transaction limits (verify via `awsknowledge`: `aurora dsql transaction limits`)
 - **REQUIRED: Build and sanitize all SQL with `safe_query.build()`** - See [Input Validation](../mcp/tools/input-validation.md#required-pattern)
-- **MUST use native foreign keys** when database-enforced referential integrity is required; refer to [Foreign Key Rules](#foreign-key-rules)
+- **MUST use foreign key constraints** when database-enforced referential integrity is required; refer to [Foreign Key Rules](#foreign-key-rules)
 - **MUST enforce tenant authorization** for multi-tenant isolation; refer to [Tenant Authorization Patterns](#tenant-authorization-patterns)
 - **REQUIRED use DELETE for truncation** - DELETE is the only supported operation for truncation
 - **SHOULD test any migrations** - Verify DDL on dev clusters before production
@@ -89,7 +89,8 @@ effortless scaling, multi-region viability, among other advantages.
 - To add a column with DEFAULT or NOT NULL:
   1. MUST issue ADD COLUMN specifying only the column name and data type
   2. MUST then issue UPDATE to populate existing rows
-  3. MAY then issue ALTER COLUMN to apply the constraint
+  3. MAY then issue direct `ALTER COLUMN ... SET DEFAULT` for future writes; use Table Recreation
+     only when applying unsupported `SET NOT NULL`
 - MUST issue a **separate ALTER TABLE statement for each column** modification.
 
 ### Transaction Rules
@@ -105,7 +106,7 @@ Verify current limits via `awsknowledge`: `aurora dsql transaction limits`
 
 ### Foreign Key Rules
 
-**MUST** load [Native Foreign Keys](foreign-keys.md) before creating, altering,
+**MUST** load [Foreign Key Constraints](foreign-keys.md) before creating, altering,
 dropping, or migrating a foreign key.
 
 ---
@@ -150,7 +151,7 @@ Arrays and `INET` are **[runtime-only](https://docs.aws.amazon.com/aurora-dsql/l
 ### Supported Key
 
 ```
-PRIMARY KEY, UNIQUE, FOREIGN KEY, NOT NULL, CHECK, DEFAULT (in CREATE TABLE)
+PRIMARY KEY, UNIQUE, FOREIGN KEY, NOT NULL, CHECK, DEFAULT (CREATE TABLE or direct ALTER COLUMN)
 ```
 
 ### Transaction Requirements

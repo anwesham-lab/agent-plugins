@@ -352,7 +352,7 @@ Let them know you're ready to help with more:
 
 1. **Indexes:** Use `CREATE INDEX ASYNC` - synchronous index creation not supported
 2. **Serialization:** Arrays must be serialized into a single column — PREFER `JSONB` (operators work directly); MAY use `TEXT` for columns the database never inspects. For document columns, `JSON` is also a valid choice (write-heavy or byte-exact paths). ASK the user.
-3. **Referential Integrity:** Use native foreign keys; add post-creation constraints with `NOT VALID` and validate with `ALTER TABLE ASYNC`
+3. **Referential Integrity:** Use foreign key constraints; add post-creation constraints with `NOT VALID` and validate with `ALTER TABLE ASYNC`
 4. **DDL Operations:** Execute one DDL per transaction, no mixing with DML
 5. **Transaction Limits:** Maximum 3,000 row modifications, 10 MiB data size per transaction
 6. **Token Refresh:** Regenerate auth tokens before 15-minute expiration

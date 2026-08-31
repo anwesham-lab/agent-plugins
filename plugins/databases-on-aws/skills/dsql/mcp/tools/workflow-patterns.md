@@ -85,7 +85,7 @@ inserts = [
 transact(inserts)
 ```
 
-## Pattern 5: Native Foreign Key
+## Pattern 5: Foreign Key
 
 ```python
 transact(["""CREATE TABLE entities (
@@ -111,4 +111,4 @@ For a tenant-scoped relationship where the database must enforce tenant equality
 a non-null tenant key on both sides. Under `MATCH SIMPLE`, optional relationship columns **MAY**
 remain nullable. Preserve ordinary foreign keys for shared or globally identified rows. The FK
 enforces integrity, not caller authorization. See
-[Native Foreign Keys](../../references/foreign-keys.md) for linting and migration workflows.
+[Foreign Key Constraints](../../references/foreign-keys.md) for linting and migration workflows.

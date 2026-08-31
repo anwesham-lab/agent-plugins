@@ -86,7 +86,7 @@ transact(["CREATE INDEX ASYNC idx_products_category ON products(tenant_id, categ
 | `TINYINT(1)`                  | `BOOLEAN`                                                                                                                          |
 | `DATETIME`                    | `TIMESTAMP`                                                                                                                        |
 | `ON UPDATE CURRENT_TIMESTAMP` | Application-layer `SET updated_at = CURRENT_TIMESTAMP`                                                                             |
-| `FOREIGN KEY`                 | Preserve as a native DSQL foreign key with type-compatible referenced and referencing columns                                      |
+| `FOREIGN KEY`                 | Preserve as a DSQL foreign key with type-compatible referenced and referencing columns                                             |
 | `INDEX`                       | `CREATE INDEX ASYNC`                                                                                                               |
 | `FULLTEXT INDEX`              | Application-layer text search                                                                                                      |
 | `ENGINE=InnoDB`               | MUST omit                                                                                                                          |
@@ -107,7 +107,7 @@ transact(["CREATE INDEX ASYNC idx_products_category ON products(tenant_id, categ
 ### MySQL-Specific Migration Rules
 
 - **MUST map** all MySQL data types to DSQL equivalents before creating tables
-- **MUST convert** AUTO_INCREMENT to UUID with gen_random_uuid(), IDENTITY column with `GENERATED AS IDENTITY (CACHE ...)`, or explicit SEQUENCE -- ALWAYS use `GENERATED AS IDENTITY` for auto-incrementing columns (see [AUTO_INCREMENT Migration](ddl-auto-increment.md#auto_increment-migration))
+- **MUST choose** UUID, IDENTITY, or a sequence intentionally; use IDENTITY when preserving MySQL integer AUTO_INCREMENT semantics (see [AUTO_INCREMENT Migration](ddl-auto-increment.md#auto_increment-migration))
 - **MUST replace** ENUM with VARCHAR and CHECK constraint
 - **MUST serialize** SET into a single-column representation; **PREFER `JSONB`** (operators work directly), with **`TEXT`** as a MAY for opaque columns; **ASK** the user
 - **SHOULD keep** JSON columns as `JSON`; **MAY upgrade to `JSONB`** when the application needs `@>`/`?`/indexed JSONB paths; **ASK** the user about query patterns

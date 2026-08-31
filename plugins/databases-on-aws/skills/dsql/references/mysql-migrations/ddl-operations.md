@@ -13,9 +13,6 @@ Migration patterns for specific MySQL DDL operations to DSQL-compatible equivale
 [Table Recreation Pattern](../ddl-migrations/overview.md#table-recreation-pattern-overview),
 including foreign-key inventory, write fencing, relationship restoration, and recovery.
 
-Before creating a replacement table, **MUST** complete the
-[Pre-Create Relationship and Dependency Gate](../ddl-migrations/overview.md#pre-create-relationship-and-dependency-gate).
-
 ## Common Verify & Swap Pattern
 
 Use the canonical

@@ -36,13 +36,13 @@ async function deleteOrder(pool, tenantId, orderId) {
 
 ---
 
-## Native Multi-Tenant Foreign Key
+## Multi-Tenant Foreign Key
 
 For a tenant-scoped relationship where the database must enforce tenant equality, **MUST** include
 a non-null tenant key in both keys. Under `MATCH SIMPLE`, optional relationship columns **MAY**
 remain nullable. Preserve ordinary foreign keys for shared or globally identified rows. See the
-executable [Native Foreign Key](../../mcp/tools/workflow-patterns.md#pattern-5-native-foreign-key)
-and follow [Native Foreign Keys](../foreign-keys.md) for operational guidance.
+executable [Foreign Key Pattern](../../mcp/tools/workflow-patterns.md#pattern-5-foreign-key) and
+follow [Foreign Key Constraints](../foreign-keys.md) for operational guidance.
 
 ---
 

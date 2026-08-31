@@ -2,10 +2,9 @@
 
 Step-by-step migration patterns for constraint changes, primary key modifications, and column transformations.
 
-**MUST read [overview.md](overview.md) first** and complete the
-[Pre-Create Relationship and Dependency Gate](overview.md#pre-create-relationship-and-dependency-gate)
-before every table-recreation Step 1. The examples abbreviate unchanged schema; the generated
-replacement **MUST** preserve every unchanged column, key, constraint, and default.
+For table-recreation sections, **MUST** read
+[overview.md](overview.md#table-recreation) first. The examples abbreviate unchanged schema; the
+generated replacement **MUST** preserve every unchanged column, key, constraint, and default.
 
 ---
 
@@ -42,7 +41,7 @@ transact([
 #### Step 3: Monitor validation
 
 **MUST** poll the returned `job_id` to a terminal state and inspect `details` on failure. Use the
-terminal-state loop in [Native Foreign Keys](../foreign-keys.md#dsql-specific-ddl).
+terminal-state loop in [Foreign Key Constraints](../foreign-keys.md#dsql-specific-ddl).
 
 `sys.wait_for_job` is a procedure, not a function. **MAY** call
 `CALL sys.wait_for_job('<job_id>')` only through an autocommit database client outside the MCP
@@ -59,7 +58,7 @@ tools' explicit transactions.
 ## FOREIGN KEY CONSTRAINTS
 
 Foreign keys do not use table recreation. Follow
-[Native Foreign Keys](../foreign-keys.md#dsql-specific-ddl) to add a constraint with `NOT VALID`,
+[Foreign Key Constraints](../foreign-keys.md#dsql-specific-ddl) to add a constraint with `NOT VALID`,
 validate it asynchronously, or drop it directly.
 
 ---
@@ -102,54 +101,35 @@ readonly_query(
    ])
    ```
 
-Aurora DSQL documents `ADD table_constraint_using_index` for this operation. If `dsql_lint`
-reports `at_unsupported_unique_using_index`, surface the diagnostic and the current DSQL
-`ALTER TABLE` documentation. Execute only after the user confirms the documented service syntax.
-The constraint takes ownership of the index and may rename it to match the constraint.
+Aurora DSQL documents `ADD table_constraint_using_index` for this operation. The constraint takes
+ownership of the index and may rename it to match the constraint.
 
 ---
 
-## DROP CONSTRAINT Migration
+## DROP CONSTRAINT
 
-**Goal:** Remove a constraint (UNIQUE, CHECK) from a table.
+**Goal:** Remove a CHECK, UNIQUE, or foreign-key constraint without table recreation.
 
-### Pre-Migration Validation
+1. Confirm the named constraint and its type:
 
-```sql
--- Identify existing constraints
-readonly_query(
-  "SELECT constraint_name, constraint_type
-   FROM information_schema.table_constraints
-   WHERE table_name = 'target_table'
-   AND constraint_type IN ('UNIQUE', 'CHECK')"
-)
-```
+   ```python
+   readonly_query(
+       "SELECT conname, contype FROM pg_constraint "
+       "WHERE conrelid = 'target_table'::regclass "
+       "AND conname = 'target_constraint'"
+   )
+   ```
 
-### Migration Steps
+2. Explain the removed invariant and obtain confirmation.
+3. Drop the named constraint directly:
 
-#### Step 1: Create new table without the constraint
+   ```python
+   transact(["ALTER TABLE target_table DROP CONSTRAINT target_constraint"])
+   ```
 
-```sql
-transact([
-  "CREATE TABLE target_table_new (
-     id UUID PRIMARY KEY,
-     email VARCHAR(255),  -- Removed UNIQUE constraint
-     other_column TEXT
-   )"
-])
-```
-
-#### Step 2: Copy data
-
-```sql
-transact([
-  "INSERT INTO target_table_new (id, email, other_column)
-   SELECT id, email, other_column
-   FROM target_table"
-])
-```
-
-**Step 3: Verify and swap** (see [Common Pattern](overview.md#common-verify--swap-pattern))
+Dropping a UNIQUE or PRIMARY KEY constraint also removes its owned index. Before dropping a
+referenced UNIQUE constraint, verify that every retained foreign key still has a valid referenced
+key or obtain approval to remove those relationships.
 
 ---
 
@@ -177,8 +157,8 @@ readonly_query(
 -- MUST ABORT if null_count > 0
 ```
 
-Review `inbound_relationships` from the
-[Pre-Create Relationship and Dependency Gate](overview.md#pre-create-relationship-and-dependency-gate).
+Review dependencies before starting
+[Table Recreation](overview.md#table-recreation).
 For every retained FK that references the current primary-key columns, the replacement **MUST**
 keep those columns covered by a `PRIMARY KEY` or `UNIQUE` constraint. Obtain explicit approval
 before removing a relationship; **MUST** abort when a retained FK cannot be restored.
