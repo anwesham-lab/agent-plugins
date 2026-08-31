@@ -3,7 +3,17 @@
 This file contains common additional errors encountered while working with DSQL and
 guidelines for how to solve them.
 
-Before referring to any listed errors, refer to the complete [DSQL troubleshooting guide](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/troubleshooting.html#troubleshooting-connections)
+Before referring to any listed error, use the routing below and consult
+[Additional Resources](#additional-resources).
+
+## Table of Contents
+
+1. [Connection and Authorization](#connection-and-authorization)
+2. [Cluster Lifecycle](#cluster-lifecycle)
+3. [Foreign Key Addition or Validation Fails](#foreign-key-addition-or-validation-fails)
+4. [Incompatibility](#incompatibility)
+5. [Protocol Compatibility](#protocol-compatibility)
+6. [Additional Resources](#additional-resources)
 
 ## Connection and Authorization
 
@@ -69,13 +79,20 @@ Connect to the cluster to wake it, then retry the backup.
 **Addition failure:** Aurora DSQL rejects `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY`
 without `NOT VALID`. Add the post-creation constraint with `NOT VALID`.
 
-**Validation-job failure:** Existing referencing rows do not match a referenced row. Find and
-repair those referencing rows, rerun `ALTER TABLE ASYNC ... VALIDATE CONSTRAINT`, and monitor the
-returned job through `sys.jobs`.
+**Validation-job failure:** Inspect `sys.jobs.status` and `sys.jobs.details` first. Repair
+referencing rows only when `details` identifies a foreign key violation. For other failures,
+address the reported cause before rerunning
+`ALTER TABLE ASYNC ... VALIDATE CONSTRAINT`.
 
 For SQLSTATE `40001` during concurrent referenced-row and referencing-row writes, retry the
-complete transaction. For transaction-limit errors during cascades, batch the referenced-row
-changes so direct and cascaded writes remain within the current row and data-size limits.
+complete transaction. For transaction-limit errors during cascades, assess per-parent fan-out.
+When one parent can exceed transaction limits, use `NO ACTION` or `RESTRICT`, process child rows
+in bounded transactions, then change the parent.
+
+### Error: "... violates foreign key constraint"
+
+SQLSTATE `23503` is not retryable. Correct the relationship or apply the intended referential
+action; **MUST NOT** route it through the `40001` OCC retry loop.
 
 ## Incompatibility
 
@@ -141,3 +158,8 @@ CREATE INDEX ASYNC idx_name ON table(column);
 
 - Use officially tested drivers from [aws-samples/aurora-dsql-samples](https://github.com/aws-samples/aurora-dsql-samples)
 - Test client compatibility before production deployment
+
+## Additional Resources
+
+- [Aurora DSQL troubleshooting guide](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/troubleshooting.html#troubleshooting-connections)
+- [Aurora DSQL PostgreSQL compatibility](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/working-with.html)

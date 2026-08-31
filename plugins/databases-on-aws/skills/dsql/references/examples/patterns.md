@@ -38,9 +38,11 @@ async function deleteOrder(pool, tenantId, orderId) {
 
 ## Native Multi-Tenant Foreign Key
 
-Include the tenant key in the referenced key and referencing foreign key so the database rejects
-cross-tenant references. Follow [Native Foreign Keys](../foreign-keys.md) for the schema pattern,
-referential actions, and migration workflow.
+For a tenant-scoped relationship where the database must enforce tenant equality, **MUST** include
+a non-null tenant key in both keys. Under `MATCH SIMPLE`, optional relationship columns **MAY**
+remain nullable. Preserve ordinary foreign keys for shared or globally identified rows. See the
+executable [Native Foreign Key](../../mcp/tools/workflow-patterns.md#pattern-5-native-foreign-key)
+and follow [Native Foreign Keys](../foreign-keys.md) for operational guidance.
 
 ---
 

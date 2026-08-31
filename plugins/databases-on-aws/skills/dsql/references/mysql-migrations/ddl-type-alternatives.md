@@ -1,6 +1,15 @@
 # MySQL to DSQL: Type Alternatives
 
-Part of [MySQL to DSQL DDL Migration](ddl-operations.md). See [Common Verify & Swap Pattern](ddl-operations.md#common-verify--swap-pattern) for the shared migration end-pattern.
+Part of [MySQL to DSQL DDL Migration](ddl-operations.md). See
+[Common Verify & Swap Pattern](../ddl-migrations/overview.md#common-verify--swap-pattern) for the
+shared migration end-pattern.
+
+## Table of Contents
+
+1. [ENUM Type Migration](#enum-type-migration)
+2. [SET Type Migration](#set-type-migration)
+3. [ON UPDATE CURRENT_TIMESTAMP Migration](#on-update-current_timestamp-migration)
+4. [FOREIGN KEY Migration](#foreign-key-migration)
 
 ---
 
@@ -120,31 +129,16 @@ transact([
 
 ## FOREIGN KEY Migration
 
-**MySQL syntax:**
-
-```sql
-CREATE TABLE orders (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  customer_id INT,
-  FOREIGN KEY (customer_id) REFERENCES customers(id)
-);
-```
-
-**DSQL equivalent for new tables:**
-
-```sql
-CREATE TABLE orders (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id INTEGER NOT NULL,
-  CONSTRAINT orders_customer_fkey
-    FOREIGN KEY (customer_id) REFERENCES customers(id)
-);
-```
-
-For an existing referencing table, follow
-[Native Foreign Keys](../foreign-keys.md#existing-tables) to add the constraint with `NOT VALID`
-and validate it asynchronously.
-
-Preserve DSQL-supported target actions when translating the constraint: `NO ACTION`, `RESTRICT`,
-`CASCADE`, `SET NULL`, and `SET DEFAULT`. For multi-tenant schemas, include `tenant_id` in both
-the referenced key and the foreign key. See [Native Foreign Keys](../foreign-keys.md).
+- Before cutover, run an orphan anti-join on the MySQL source and verify every referenced column
+  set is backed by `PRIMARY KEY` or `UNIQUE`, not only a non-unique index. A successful DSQL
+  `NOT VALID` add proves enforcement for new writes; it does not validate existing rows.
+- Preserve the relationship and keep referenced/referencing column types compatible.
+- Translate MySQL `ALTER TABLE ... DROP FOREIGN KEY` to
+  `ALTER TABLE ... DROP CONSTRAINT`.
+- InnoDB creates a referencing-side FK index implicitly. DSQL requires an explicit
+  `CREATE INDEX ASYNC` when the access pattern needs that index.
+- For post-creation adds, follow
+  [Native Foreign Keys](../foreign-keys.md#dsql-specific-ddl).
+- For a tenant-scoped relationship where the database must enforce tenant equality, **MUST**
+  include a non-null tenant key on both sides. Preserve ordinary foreign keys for shared or
+  globally identified rows.

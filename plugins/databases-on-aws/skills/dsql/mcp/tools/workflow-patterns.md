@@ -87,10 +87,28 @@ transact(inserts)
 
 ## Pattern 5: Native Foreign Key
 
-```sql
-FOREIGN KEY (tenant_id, entity_id)
-  REFERENCES entities (tenant_id, entity_id)
+```python
+transact(["""CREATE TABLE entities (
+  tenant_id UUID NOT NULL,
+  entity_id UUID NOT NULL,
+  name TEXT NOT NULL,
+  PRIMARY KEY (tenant_id, entity_id)
+)"""])
+
+transact(["""CREATE TABLE objectives (
+  tenant_id UUID NOT NULL,
+  objective_id UUID NOT NULL,
+  entity_id UUID NOT NULL,
+  title TEXT NOT NULL,
+  PRIMARY KEY (tenant_id, objective_id),
+  CONSTRAINT objectives_entities_fkey
+    FOREIGN KEY (tenant_id, entity_id)
+    REFERENCES entities (tenant_id, entity_id)
+)"""])
 ```
 
-Use a composite foreign key so the database rejects missing and cross-tenant references. See
-[Native Foreign Keys](../../references/foreign-keys.md) for the complete workflow.
+For a tenant-scoped relationship where the database must enforce tenant equality, **MUST** include
+a non-null tenant key on both sides. Under `MATCH SIMPLE`, optional relationship columns **MAY**
+remain nullable. Preserve ordinary foreign keys for shared or globally identified rows. The FK
+enforces integrity, not caller authorization. See
+[Native Foreign Keys](../../references/foreign-keys.md) for linting and migration workflows.

@@ -3,6 +3,19 @@
 Adapter names and key gotchas per framework. This file provides DSQL-specific adapter
 names and configuration not available in general documentation.
 
+Before relying on generated foreign keys, **MUST** verify the selected adapter version's release
+notes or inspect its generated DDL. When the adapter omits native foreign keys, generate and lint
+the DDL manually to preserve the relationship.
+
+Across adapters, inline foreign keys in `CREATE TABLE` use native DSQL foreign-key syntax.
+Post-creation foreign keys **MUST** use `ADD CONSTRAINT ... NOT VALID`, followed by
+`ALTER TABLE ASYNC ... VALIDATE CONSTRAINT` and terminal job verification.
+
+For existing tables, emit that sequence through the framework's raw-SQL migration hook:
+`RunSQL` (Django), `migrationBuilder.Sql` (EF Core), Flyway/Liquibase (Hibernate), `execute`
+(Rails), or `op.execute` (Alembic/SQLAlchemy). For tenant-scoped composite FKs, use raw DDL in
+Django and Rails; EF Core, Hibernate, and SQLAlchemy provide composite relationship mappings.
+
 ## Adapters
 
 | Framework  | Adapter                                 | Install                                                      |
@@ -17,14 +30,14 @@ names and configuration not available in general documentation.
 
 ### Django
 
-| Issue             | Fix                                                               |
-| ----------------- | ----------------------------------------------------------------- |
-| ENGINE            | `'aurora_dsql_django'` (not `django.db.backends.postgresql`)      |
-| CONN_MAX_AGE      | ≤ 1800 (DSQL timeout is 1 hour)                                   |
-| Migrations        | Each DDL in its own migration; `RunSQL("CREATE INDEX ASYNC ...")` |
-| SELECT FOR UPDATE | Remove — DSQL uses OCC; wrap writes in retry decorator            |
-| AutoField         | Replace with `UUIDField(primary_key=True, default=uuid.uuid4)`    |
-| ForeignKey        | Keep `ForeignKey`; the DSQL backend creates native constraints    |
+| Issue             | Fix                                                                           |
+| ----------------- | ----------------------------------------------------------------------------- |
+| ENGINE            | `'aurora_dsql_django'` (not `django.db.backends.postgresql`)                  |
+| CONN_MAX_AGE      | ≤ 1800 (DSQL timeout is 1 hour)                                               |
+| Migrations        | Each DDL in its own migration; `RunSQL("CREATE INDEX ASYNC ...")`             |
+| SELECT FOR UPDATE | Remove — DSQL uses OCC; wrap writes in retry decorator                        |
+| AutoField         | Replace with `UUIDField(primary_key=True, default=uuid.uuid4)`                |
+| ForeignKey        | Keep `ForeignKey`; the DSQL backend creates native constraints for new tables |
 
 ### EF Core (.NET)
 
@@ -52,18 +65,21 @@ Requires .NET 8.0+, EF Core 9.0.7+, and `Amazon.AuroraDsql.Npgsql` 1.1.0+.
 
 ### Rails
 
-| Issue      | Fix                                                                 |
-| ---------- | ------------------------------------------------------------------- |
-| adapter    | `postgresql` (standard pg gem)                                      |
-| Auth       | Custom connection handler generating IAM tokens via `aws-sdk-dsql`  |
-| Migrations | `disable_ddl_transaction!` in each migration                        |
-| PKs        | `id: :uuid` in `create_table`                                       |
-| FKs        | Keep `add_foreign_key`; native constraints are supported            |
-| Locking    | Remove `lock!` / `with_lock` — use OCC retry in `ApplicationRecord` |
+| Issue      | Fix                                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------- |
+| adapter    | `postgresql` (standard pg gem)                                                                                      |
+| Auth       | Custom connection handler generating IAM tokens via `aws-sdk-dsql`                                                  |
+| Migrations | `disable_ddl_transaction!` in each migration                                                                        |
+| PKs        | `id: :uuid` in `create_table`                                                                                       |
+| FKs        | Use `add_foreign_key ..., validate: false`, then run `ALTER TABLE ASYNC ... VALIDATE CONSTRAINT` and verify the job |
+| Locking    | Remove `lock!` / `with_lock` — use OCC retry in `ApplicationRecord`                                                 |
 
 ### SQLAlchemy
 
-| Issue       | Fix                                                                                             |
-| ----------- | ----------------------------------------------------------------------------------------------- |
-| ForeignKey  | Keep `ForeignKey` and `ForeignKeyConstraint`; the dialect emits native inline constraints       |
-| Altered FKs | Add with `NOT VALID`, then validate separately with `ALTER TABLE ASYNC ... VALIDATE CONSTRAINT` |
+| Issue      | Fix                                                                                       |
+| ---------- | ----------------------------------------------------------------------------------------- |
+| ForeignKey | Keep `ForeignKey` and `ForeignKeyConstraint`; the dialect emits native inline constraints |
+
+## Additional Resources
+
+- [Migrating from PostgreSQL to Aurora DSQL — framework and ORM compatibility](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/working-with-postgresql-compatibility-migration-guide.html#dsql-framework-compatibility)

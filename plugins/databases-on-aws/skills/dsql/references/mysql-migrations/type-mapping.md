@@ -108,7 +108,6 @@ MUST use the following DSQL alternatives for these MySQL features:
 
 | MySQL Feature                      | DSQL Alternative                                    |
 | ---------------------------------- | --------------------------------------------------- |
-| FOREIGN KEY constraints            | Native foreign key constraints                      |
 | FULLTEXT indexes                   | Application-layer text search                       |
 | SPATIAL indexes                    | Application-layer spatial queries                   |
 | ENGINE=InnoDB/MyISAM               | MUST omit (DSQL manages storage automatically)      |
@@ -133,6 +132,9 @@ These MySQL operations have direct DSQL equivalents:
 | `ALTER TABLE ... ADD COLUMN col type`      | `ALTER TABLE ... ADD COLUMN col type`               |
 | `ALTER TABLE ... RENAME COLUMN old TO new` | `ALTER TABLE ... RENAME COLUMN old TO new`          |
 | `ALTER TABLE ... RENAME TO new_name`       | `ALTER TABLE ... RENAME TO new_name`                |
+| `CREATE TABLE ... FOREIGN KEY ...`         | Preserve the native foreign key                     |
+| `ALTER TABLE ... ADD FOREIGN KEY`          | Add `NOT VALID`, then validate asynchronously       |
+| `ALTER TABLE ... DROP FOREIGN KEY`         | `ALTER TABLE ... DROP CONSTRAINT`                   |
 | `CREATE INDEX idx ON t(col)`               | `CREATE INDEX ASYNC idx ON t(col)` (MUST use ASYNC) |
 | `DROP INDEX idx ON t`                      | `DROP INDEX idx` (MUST omit the ON clause)          |
 
@@ -155,13 +157,9 @@ These MySQL operations MUST use the **Table Recreation Pattern** in DSQL:
 
 ### Foreign Key Migration
 
-Foreign key operations are exceptions to the table-recreation mapping above. Add a foreign key
-without an initial scan, validate existing rows asynchronously, and drop it directly:
-
-| MySQL DDL                          | DSQL Approach                                                                                 |
-| ---------------------------------- | --------------------------------------------------------------------------------------------- |
-| `ALTER TABLE ... ADD FOREIGN KEY`  | Add with `NOT VALID`, then run `ALTER TABLE ASYNC ... VALIDATE CONSTRAINT` in a separate step |
-| `ALTER TABLE ... DROP FOREIGN KEY` | Drop directly with `ALTER TABLE ... DROP CONSTRAINT`                                          |
+Use the direct mappings above and follow
+[Native Foreign Keys](../foreign-keys.md#dsql-specific-ddl) for post-creation adds and
+validation.
 
 ### Operations Requiring Application-Layer Implementation
 

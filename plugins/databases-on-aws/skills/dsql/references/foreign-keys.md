@@ -1,180 +1,141 @@
 # Native Foreign Keys
 
-Aurora DSQL supports foreign key constraints. Preserve supported PostgreSQL foreign keys during
-migration.
+Aurora DSQL supports native foreign keys with familiar SQL syntax. Use foreign keys by default
+for database-enforced referential integrity. Preserve foreign-key relationships during migration
+and translate only unsupported source syntax or options.
 
-## New Tables
+## Table of Contents
 
-Create the referenced table first. The referenced columns **MUST** have a matching
-non-deferrable `PRIMARY KEY` or `UNIQUE` constraint.
+1. [Default Pattern](#default-pattern)
+2. [DSQL-Specific DDL](#dsql-specific-ddl)
+3. [Operational Notes](#operational-notes)
+4. [Table Recreation and Drops](#table-recreation-and-drops)
+5. [Additional Resources](#additional-resources)
 
-Run `dsql_lint(fix=True)` before each DDL statement. Handle every diagnostic as described in
-[dsql-lint.md](dsql-lint.md). Proceed only when no diagnostic is unfixable, and execute the
-returned `fixed_sql`, not the pre-lint input. Run each statement in a separate `transact` call:
+## Default Pattern
 
-```python
-customers_ddl = """CREATE TABLE customers (
-  tenant_id UUID NOT NULL,
-  customer_id UUID NOT NULL,
-  name TEXT NOT NULL,
-  PRIMARY KEY (tenant_id, customer_id)
-)"""
-customers_lint = dsql_lint(sql=customers_ddl, fix=True)
-if customers_lint["summary"]["errors"]:
-    raise ValueError("Resolve unfixable diagnostics and re-lint before execution")
-transact([customers_lint["fixed_sql"]])
+Create the referenced table before the referencing table and use standard `REFERENCES` or
+`FOREIGN KEY ... REFERENCES` syntax. See
+[Native Foreign Key](../mcp/tools/workflow-patterns.md#pattern-5-native-foreign-key) for executable
+composite tenant-key DDL.
 
-orders_ddl = """CREATE TABLE orders (
-  tenant_id UUID NOT NULL,
-  order_id UUID NOT NULL,
-  customer_id UUID NOT NULL,
-  PRIMARY KEY (tenant_id, order_id),
-  CONSTRAINT orders_customer_fkey
-    FOREIGN KEY (tenant_id, customer_id)
-    REFERENCES customers (tenant_id, customer_id)
-    NOT DEFERRABLE
-)"""
-orders_lint = dsql_lint(sql=orders_ddl, fix=True)
-if orders_lint["summary"]["errors"]:
-    raise ValueError("Resolve unfixable diagnostics and re-lint before execution")
-transact([orders_lint["fixed_sql"]])
-```
+Use a unique referenced key and type-compatible referencing columns.
 
-For multi-tenant data, the foreign key **MUST** include `tenant_id` on both sides. Referencing
-`customer_id` alone can permit a referencing row to use another tenant's referenced row.
+For a tenant-scoped relationship where the database must enforce tenant equality, the tenant key
+**MUST** appear in both keys and be `NOT NULL` on both sides. Under the default `MATCH SIMPLE`,
+optional relationship columns **MAY** remain nullable; a null relationship value means no
+relationship. Use `MATCH FULL` when the application must reject partially populated composite
+keys. Preserve ordinary foreign keys for shared or globally identified rows. A foreign key
+enforces integrity, not caller authorization.
 
-## Supported Options
+## DSQL-Specific DDL
 
-| Feature                    | Supported behavior                                                                                                                                                 |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Referential actions        | `NO ACTION`, `RESTRICT`, `CASCADE`, `SET NULL`, `SET DEFAULT`                                                                                                      |
-| Referencing-column subsets | `ON DELETE SET NULL` and `ON DELETE SET DEFAULT` may name a subset of referencing columns. `ON UPDATE` does not support this subset form.                          |
-| Match types                | `MATCH SIMPLE` (default) permits any null key component. `MATCH FULL` requires all key components to be null or all to be non-null.                                |
-| Deferrability              | `NOT DEFERRABLE` checks after each statement. `DEFERRABLE` defaults to `INITIALLY IMMEDIATE`; use `INITIALLY DEFERRED` to check at commit.                         |
-| Transaction mode changes   | Run `SET CONSTRAINTS ... IMMEDIATE\|DEFERRED` inside an explicit transaction. It changes only deferrable foreign keys. `RESTRICT` actions always remain immediate. |
-| Retroactive checks         | Changing a deferrable foreign key to `IMMEDIATE` checks outstanding changes immediately.                                                                           |
+Run every externally sourced or generated DDL statement through the complete
+[dsql-lint workflow](dsql-lint.md#workflow-validate--migrate-sql-to-dsql). Surface every
+diagnostic and the returned `fixed_sql`; stop on `unfixable` and obtain acknowledgement for
+`fixed_with_warning`.
 
-Use `MATCH SIMPLE` or `MATCH FULL`. PostgreSQL does not implement `MATCH PARTIAL`; Aurora DSQL
-inherits this behavior.
+### Add to an existing table
 
-For `SET NULL`, each referencing column selected by the action **MUST** be nullable. An `ON DELETE
-SET NULL (column_name)` subset can leave other key columns, such as `tenant_id`, as `NOT NULL`.
-With `SET DEFAULT`, each resulting non-null default **MUST** match a referenced row.
+Post-creation foreign keys **MUST** use `NOT VALID`. The add is synchronous, applies to new writes
+immediately, skips the existing-row scan, and returns no `job_id`.
 
-Run `SET CONSTRAINTS` and the affected DML in the same `transact` call. A standalone call commits
-immediately and cannot change the mode of a later transaction. Keep constraints `NOT DEFERRABLE`
-unless a transaction must write a referencing row before its referenced row. For that case, make
-only the required constraint deferrable:
+When referenced uniqueness comes from `CREATE UNIQUE INDEX ASYNC`, wait until
+`pg_index.indisvalid = true` before adding the foreign key.
 
-```python
-deferrable_ddl = """ALTER TABLE orders
-  ALTER CONSTRAINT orders_customer_fkey
-  DEFERRABLE INITIALLY IMMEDIATE"""
-deferrable_lint = dsql_lint(sql=deferrable_ddl, fix=True)
-if deferrable_lint["summary"]["errors"]:
-    raise ValueError("Resolve unfixable diagnostics and re-lint before execution")
-transact([deferrable_lint["fixed_sql"]])
-```
-
-Then defer it only for the transaction that needs the reversed write order:
-
-```python
-transact([
-    "SET CONSTRAINTS orders_customer_fkey DEFERRED",
-    """INSERT INTO orders (tenant_id, order_id, customer_id)
-       VALUES (
-         '00000000-0000-0000-0000-000000000001',
-         '00000000-0000-0000-0000-000000000002',
-         '00000000-0000-0000-0000-000000000003'
-       )""",
-    """INSERT INTO customers (tenant_id, customer_id, name)
-       VALUES (
-         '00000000-0000-0000-0000-000000000001',
-         '00000000-0000-0000-0000-000000000003',
-         'Example customer'
-       )"""
-])
-```
-
-**SHOULD** default to `NO ACTION` and `NOT DEFERRABLE`. Use `CASCADE`, `SET NULL`, `SET DEFAULT`,
-or deferral only when the user explicitly intends the behavior and confirms its impact.
-
-## Existing Tables
-
-Add a foreign key with `NOT VALID` so it applies to new writes without scanning existing
-referencing rows:
-
-```python
-add_fk_ddl = """ALTER TABLE orders
-  ADD CONSTRAINT orders_customer_fkey
+```sql
+ALTER TABLE orders
+  ADD CONSTRAINT orders_customers_customer_fkey
   FOREIGN KEY (tenant_id, customer_id)
   REFERENCES customers (tenant_id, customer_id)
-  NOT VALID"""
-add_fk_lint = dsql_lint(sql=add_fk_ddl, fix=True)
-if add_fk_lint["summary"]["errors"]:
-    raise ValueError("Resolve unfixable diagnostics and re-lint before execution")
-transact([add_fk_lint["fixed_sql"]])
+  NOT VALID;
 ```
 
-Validate existing rows in a separate asynchronous operation:
+### Validate existing rows
+
+`ASYNC` is **REQUIRED** for `VALIDATE CONSTRAINT` and applies only to this statement.
+
+```sql
+ALTER TABLE ASYNC orders
+  VALIDATE CONSTRAINT orders_customers_customer_fkey;
+```
+
+Capture the returned `job_id`, poll `sys.jobs` through `submitted`, `processing`, `completed`, or
+`failed`, inspect `details` on failure, and verify the catalog state:
 
 ```python
-validate_fk_ddl = """ALTER TABLE ASYNC orders
-  VALIDATE CONSTRAINT orders_customer_fkey"""
-validate_fk_lint = dsql_lint(sql=validate_fk_ddl, fix=True)
-if validate_fk_lint["summary"]["errors"]:
-    raise ValueError("Resolve unfixable diagnostics and re-lint before execution")
-transact([validate_fk_lint["fixed_sql"]])
+from safe_query import build, literal
+import time
+
+validation_result = transact([
+    "ALTER TABLE ASYNC orders "
+    "VALIDATE CONSTRAINT orders_customers_customer_fkey"
+])
+job_id = validation_result[0]["job_id"]
+deadline = time.monotonic() + 300
+
+while True:
+    job = readonly_query(build(
+        "SELECT status, details FROM sys.jobs WHERE job_id = {job_id}",
+        job_id=literal(job_id),
+    ))[0]
+    if job["status"] == "completed":
+        break
+    if job["status"] == "failed":
+        raise RuntimeError(f"Foreign key validation failed: {job['details']}")
+    if time.monotonic() >= deadline:
+        raise TimeoutError(f"Timed out waiting for validation job {job_id}")
+    time.sleep(1)
+
+validated = readonly_query(build(
+    "SELECT convalidated FROM pg_constraint "
+    "WHERE conrelid = 'orders'::regclass "
+    "AND contype = 'f' "
+    "AND conname = {constraint_name}",
+    constraint_name=literal("orders_customers_customer_fkey"),
+))[0]["convalidated"]
+if not validated:
+    raise RuntimeError("Validation job completed without validating the constraint")
 ```
 
-Poll `sys.jobs` until validation reaches a terminal state and treat a failed job as a failed
-migration. Alternatively, run `CALL sys.wait_for_job('<job_id>')` through a database client with
-autocommit enabled, outside an explicit transaction.
+Alternatively, call `sys.wait_for_job` through an autocommit database client and require its
+`succeeded` result to be true. MCP `readonly_query` and `transact` open explicit transactions, so
+they cannot call this procedure.
 
-Change an existing foreign key's deferrability directly with `ALTER TABLE ... ALTER CONSTRAINT
-... [ NOT ] DEFERRABLE [ INITIALLY IMMEDIATE | INITIALLY DEFERRED ]`.
+## Operational Notes
 
-Before dropping a foreign key, verify the named constraint exists with `contype = 'f'`, explain
-that the drop removes database-enforced referential integrity, and obtain confirmation. Then lint
-and execute the direct drop:
+- `MATCH SIMPLE` is the default, `MATCH FULL` enforces all-null or all-non-null keys, and Aurora
+  DSQL does not support `MATCH PARTIAL`.
+- **SHOULD** default to `NO ACTION` and `NOT DEFERRABLE`. Use `CASCADE`, `SET NULL`,
+  `SET DEFAULT`, or deferral only when the user explicitly intends the behavior and confirms
+  its impact.
+- Use `DEFERRABLE` for circular relationships or ORM flush orders that cannot satisfy each FK
+  statement-by-statement. Run `SET CONSTRAINTS` in the same explicit transaction as the related
+  DML; a separate MCP `transact` call commits independently. Deferred violations surface at
+  `COMMIT`.
+- Use relationship-specific constraint names such as `orders_billing_customer_fkey`; qualify the
+  table name when a schema is required.
+- For tenant-scoped relationships, referential actions **MUST** preserve the tenant key and the
+  resulting tuple **MUST** remain in the same tenant.
+- FK checks perform reads. A transaction can fail with `40001` when a concurrent referenced-key
+  change commits after the transaction's snapshot; retry the complete transaction.
+- Cascading actions count toward transaction limits. **MUST** assess per-parent fan-out; use
+  `NO ACTION` or `RESTRICT` and process children in bounded transactions when one parent can
+  exceed the limit.
+- Surface foreign-key violation `23503` for relationship correction.
 
-```python
-drop_fk_ddl = """ALTER TABLE orders
-  DROP CONSTRAINT orders_customer_fkey RESTRICT"""
-drop_fk_lint = dsql_lint(sql=drop_fk_ddl, fix=True)
-if drop_fk_lint["summary"]["errors"]:
-    raise ValueError("Resolve unfixable diagnostics and re-lint before execution")
-transact([drop_fk_lint["fixed_sql"]])
-```
+## Table Recreation and Drops
 
-Verify that the constraint no longer exists. Use `CASCADE` only after confirming the dependent
-objects that DSQL will remove.
+Use `ALTER TABLE ... DROP CONSTRAINT` to remove a foreign key directly. Before dropping, confirm
+the named constraint with `pg_constraint.contype = 'f'`, explain the loss of database
+enforcement, and obtain confirmation.
 
-## Indexes
+Table recreation **MUST** inventory and restore inbound and outbound foreign keys. Follow the
+[Table Recreation Pattern](ddl-migrations/overview.md#table-recreation-pattern-overview), which
+uses direct named drops so every inbound relationship has an explicit restore definition.
 
-Create a referencing-side index separately when joins or referenced-row deletes and updates need
-efficient lookup. Lint the index DDL before executing it:
+## Additional Resources
 
-```python
-index_ddl = """CREATE INDEX ASYNC orders_customer_idx
-  ON orders (tenant_id, customer_id)"""
-index_lint = dsql_lint(sql=index_ddl, fix=True)
-if index_lint["summary"]["errors"]:
-    raise ValueError("Resolve unfixable diagnostics and re-lint before execution")
-transact([index_lint["fixed_sql"]])
-```
-
-## Transactions and Concurrency
-
-- Foreign key checks add reads to writes on referenced and referencing tables. Benchmark the
-  workload before adding a constraint and confirm that its performance meets requirements.
-- Rows changed by `CASCADE`, `SET NULL`, or `SET DEFAULT` count toward DSQL transaction row and
-  data-size limits. Batch referenced-row changes so the total direct and cascaded writes remain
-  within current limits.
-- Concurrent referenced-row and referencing-row changes can produce retryable serialization
-  failures. Retry the complete transaction on SQLSTATE `40001` using the patterns in
-  [occ-retry-patterns.md](occ-retry-patterns.md).
-- Keep heavily referenced key columns stable. Updating non-key columns does not conflict with a
-  referencing insert, but concurrent changes to referenced keys can cause serialization failures.
-- Application authorization and business validation can complement foreign keys, but do not
-  replace database-enforced referential integrity.
+- [Working with foreign key constraints](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/working-with-foreign-key-constraints.html)
+- [CREATE TABLE foreign key syntax](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/create-table-syntax-support.html#create-table-foreign-keys)
+- [SET CONSTRAINTS](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/set-constraints-syntax-support.html)

@@ -78,12 +78,14 @@ effortless scaling, multi-region viability, among other advantages.
 - MUST use **`ALTER TABLE ASYNC ... VALIDATE CONSTRAINT`** for constraint validation: No synchronous validation
   - **MUST** add CHECK constraints with `NOT VALID`: `ALTER TABLE t ADD CONSTRAINT c CHECK (expr) NOT VALID`
   - Then validate asynchronously: `ALTER TABLE ASYNC t VALIDATE CONSTRAINT c` — returns a `job_id`
-  - **MUST** monitor via `sys.jobs` or block with `SELECT sys.wait_for_job('job_id')`
+  - **MUST** monitor via `sys.jobs` when using MCP tools
+  - **MAY** block with `CALL sys.wait_for_job('job_id')` only through an autocommit database client outside the MCP tools' explicit transactions
   - Constraint applies to new rows immediately; existing rows validated in background
 - **MUST** add post-creation foreign keys with `NOT VALID`
   - Validate with `ALTER TABLE ASYNC ... VALIDATE CONSTRAINT`
-  - Monitor via `sys.jobs` or `CALL sys.wait_for_job('job_id')`
-- **Asynchronous Execution:** DDL ALWAYS runs asynchronously
+  - Monitor via `sys.jobs`; `CALL sys.wait_for_job('job_id')` **MAY** run only through an
+    autocommit database client outside the MCP tools' explicit transactions
+- **MUST** use `ASYNC` for `CREATE INDEX` and `VALIDATE CONSTRAINT`; post-creation `ADD CONSTRAINT ... FOREIGN KEY ... NOT VALID` is synchronous and returns no `job_id`
 - To add a column with DEFAULT or NOT NULL:
   1. MUST issue ADD COLUMN specifying only the column name and data type
   2. MUST then issue UPDATE to populate existing rows

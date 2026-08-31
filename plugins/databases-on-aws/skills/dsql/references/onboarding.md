@@ -251,7 +251,7 @@ cargo add aws-sdk-dsql tokio --features full
 - Ask: "Found existing schema definitions. Want to migrate these to DSQL?"
 - If yes, MUST verify DSQL compatibility:
   - No SERIAL types (use `GENERATED AS IDENTITY` with sequences, or UUID)
-  - Preserve supported foreign keys; for multi-tenant relationships, include `tenant_id` in both sides of a composite key
+  - Preserve foreign-key relationships; load [`foreign-keys.md`](foreign-keys.md) for DSQL-specific ALTER, validation, and tenant-key guidance
   - Arrays must be serialized into a single column — PREFER `JSONB` when querying inside the value (`@>`, `?`, `jsonb_array_elements_text(data)`, indexed JSONB paths); MAY use `TEXT` for columns the database never inspects; `JSON` is also valid for write-heavy or byte-exact paths. ASK the user.
   - SHOULD keep existing `JSON` columns as `JSON`; MAY upgrade to `JSONB` if JSONB-only operators or indexed paths are needed
   - Verify column types against the [supported data types list](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/working-with-postgresql-compatibility-supported-data-types.html)
